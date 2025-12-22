@@ -35,6 +35,7 @@ const pollSchema = new mongoose.Schema(
     question: { type: String, required: true },
     options: [optionSchema],
     allowAnonymous: { type: Boolean, default: true },
+    published: { type: Boolean, default: false },
     createdAt: { type: Date, default: Date.now },
   },
   { collection: "polls" }
@@ -185,6 +186,26 @@ app.delete("/api/polls/:id", async (req, res) => {
   } catch (err) {
     console.error(err);
     res.status(500).json({ message: "Error deleting poll" });
+  }
+});
+
+// Toggle publish status of a poll
+app.patch("/api/polls/:id/publish", async (req, res) => {
+  try {
+    const { published } = req.body;
+    const poll = await Poll.findById(req.params.id);
+    
+    if (!poll) {
+      return res.status(404).json({ message: "Poll not found" });
+    }
+    
+    poll.published = published !== undefined ? published : !poll.published;
+    const updatedPoll = await poll.save();
+    
+    res.json(updatedPoll);
+  } catch (err) {
+    console.error(err);
+    res.status(500).json({ message: "Error updating poll publish status" });
   }
 });
 

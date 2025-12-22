@@ -1,10 +1,11 @@
 import React, { useEffect, useState, useRef } from "react";
+import { PieChart, Pie, Cell, ResponsiveContainer, Legend, Tooltip } from "recharts";
 
 // Use environment variable or fallback to localhost
 const API_URL = process.env.REACT_APP_API_URL || "http://localhost:5000/api";
 
 function App() {
-  const [view, setView] = useState("list"); // "list" | "detail" | "auth" | "admin"
+  const [view, setView] = useState("list"); // "list" | "detail" | "auth" | "admin" | "dashboard"
   const [polls, setPolls] = useState([]);
   const [selectedPoll, setSelectedPoll] = useState(null);
   const [loading, setLoading] = useState(false);
@@ -72,7 +73,7 @@ function App() {
       if (currentView === "detail" && currentSelectedPoll) {
         // Refresh just the selected poll
         fetchPollById(currentSelectedPoll._id, false);
-      } else if (currentView === "list") {
+      } else if (currentView === "list" || currentView === "dashboard") {
         fetchPolls(false);
       }
     }, 3000);
@@ -199,6 +200,12 @@ function App() {
           Surveys
         </button>
         <button
+          onClick={() => setView("dashboard")}
+          style={view === "dashboard" ? styles.activeButton : styles.button}
+        >
+          Dashboard
+        </button>
+        <button
           onClick={() => setView("auth")}
           style={view === "auth" ? styles.activeButton : styles.button}
         >
@@ -213,7 +220,7 @@ function App() {
       </nav>
 
       <main style={styles.main}>
-        {loading && <p>Loading...</p>}
+        {loading && <LoadingSpinner />}
 
         {!loading && view === "list" && (
           <PollList polls={polls} onPollClick={handlePollClick} />
@@ -228,6 +235,22 @@ function App() {
             currentUser={currentUser}
             onRequireAuth={() => setView("auth")}
             isAdmin={isAdmin}
+            onPublishToggle={async (published) => {
+              try {
+                const res = await fetch(`${API_URL}/polls/${selectedPoll._id}/publish`, {
+                  method: "PATCH",
+                  headers: { "Content-Type": "application/json" },
+                  body: JSON.stringify({ published }),
+                });
+                if (res.ok) {
+                  const updatedPoll = await res.json();
+                  setSelectedPoll(updatedPoll);
+                  await fetchPolls(false);
+                }
+              } catch (err) {
+                console.error("Error toggling publish status", err);
+              }
+            }}
           />
         )}
 
@@ -247,7 +270,42 @@ function App() {
             onCreated={handleCreatedPoll}
           />
         )}
+
+        {!loading && view === "dashboard" && (
+          <Dashboard
+            polls={polls}
+            onPollClick={handlePollClick}
+            isAdmin={isAdmin}
+            onPublishToggle={async (pollId, published) => {
+              try {
+                const res = await fetch(`${API_URL}/polls/${pollId}/publish`, {
+                  method: "PATCH",
+                  headers: { "Content-Type": "application/json" },
+                  body: JSON.stringify({ published }),
+                });
+                if (res.ok) {
+                  await fetchPolls(false);
+                  if (selectedPoll && selectedPoll._id === pollId) {
+                    await fetchPollById(pollId, false);
+                  }
+                }
+              } catch (err) {
+                console.error("Error toggling publish status", err);
+              }
+            }}
+          />
+        )}
       </main>
+    </div>
+  );
+}
+
+// ====== Loading Spinner Component ======
+function LoadingSpinner() {
+  return (
+    <div style={styles.loadingContainer}>
+      <div style={styles.spinner}></div>
+      <p style={styles.loadingText}>Loading...</p>
     </div>
   );
 }
@@ -255,28 +313,46 @@ function App() {
 // ====== Poll List Component ======
 function PollList({ polls, onPollClick }) {
   if (polls.length === 0) {
-    return <p>No polls yet. Create one!</p>;
+    return (
+      <div style={styles.emptyState}>
+        <div style={styles.emptyIcon}>📊</div>
+        <h2 style={styles.emptyTitle}>No polls yet</h2>
+        <p style={styles.emptyText}>Create your first poll to get started!</p>
+      </div>
+    );
   }
 
   return (
-    <div>
-      <h2>All Polls</h2>
+    <div style={styles.fadeIn}>
+      <h2 style={styles.sectionTitle}>All Polls</h2>
       <ul style={styles.list}>
-        {polls.map((poll) => (
+        {polls.map((poll, index) => (
           <li
             key={poll._id}
-            style={styles.listItem}
+            style={{
+              ...styles.listItem,
+              animationDelay: `${index * 0.1}s`,
+            }}
             onClick={() => onPollClick(poll)}
+            className="poll-item"
           >
-            <div>
-              <strong>{poll.question}</strong>
-              <div style={{ fontSize: "0.85rem", color: "#666" }}>
-                {poll.allowAnonymous ? "Anonymous voting allowed" : "Non-anonymous"}
+            <div style={styles.listItemContent}>
+              <strong style={styles.pollQuestion}>{poll.question}</strong>
+              <div style={styles.pollMeta}>
+                <span style={styles.badge}>
+                  {poll.allowAnonymous ? "🔓 Anonymous" : "🔒 Non-anonymous"}
+                </span>
+                {poll.published && (
+                  <span style={styles.publishedBadge}>✨ Published</span>
+                )}
               </div>
             </div>
-            <span style={{ fontSize: "0.8rem", color: "#999" }}>
-              {new Date(poll.createdAt).toLocaleString()}
-            </span>
+            <div style={styles.listItemRight}>
+              <span style={styles.dateText}>
+                {new Date(poll.createdAt).toLocaleDateString()}
+              </span>
+              <span style={styles.arrow}>→</span>
+            </div>
           </li>
         ))}
       </ul>
@@ -351,8 +427,8 @@ function CreatePollForm({ onCreated }) {
   };
 
   return (
-    <div>
-      <h2>Create a New Poll</h2>
+    <div style={styles.fadeIn}>
+      <h2 style={styles.sectionTitle}>✨ Create a New Poll</h2>
       <form onSubmit={handleSubmit} style={styles.form}>
         <label style={styles.label}>
           Question:
@@ -364,7 +440,7 @@ function CreatePollForm({ onCreated }) {
           />
         </label>
 
-        <div style={{ marginTop: "12px" }}>
+        <div style={{ marginTop: "20px" }}>
           <div style={styles.label}>Options:</div>
           {options.map((opt, index) => (
             <div key={index} style={styles.optionRow}>
@@ -379,8 +455,9 @@ function CreatePollForm({ onCreated }) {
                   type="button"
                   onClick={() => removeOption(index)}
                   style={styles.smallButton}
+                  title="Remove option"
                 >
-                  X
+                  ✕
                 </button>
               )}
             </div>
@@ -388,29 +465,34 @@ function CreatePollForm({ onCreated }) {
           <button
             type="button"
             onClick={addOption}
-            style={{ ...styles.button, marginTop: "8px" }}
+            style={{ ...styles.secondaryButton, marginTop: "12px" }}
           >
-            + Add Option
+            ➕ Add Option
           </button>
         </div>
 
-        <label style={{ ...styles.label, marginTop: "12px" }}>
+        <label style={{ ...styles.label, marginTop: "20px", display: "flex", alignItems: "center", gap: "8px", cursor: "pointer" }}>
           <input
             type="checkbox"
             checked={allowAnonymous}
             onChange={(e) => setAllowAnonymous(e.target.checked)}
-          />{" "}
-          Allow anonymous voting
+            style={{ width: "18px", height: "18px", cursor: "pointer" }}
+          />
+          <span>Allow anonymous voting</span>
         </label>
 
-        {error && <p style={{ color: "red" }}>{error}</p>}
+        {error && (
+          <div style={styles.errorMessage}>
+            <span>⚠️ {error}</span>
+          </div>
+        )}
 
         <button
           type="submit"
-          style={{ ...styles.button, marginTop: "16px" }}
+          style={{ ...styles.button, marginTop: "24px", width: "100%" }}
           disabled={submitting}
         >
-          {submitting ? "Creating..." : "Create Poll"}
+          {submitting ? "⏳ Creating..." : "🚀 Create Poll"}
         </button>
       </form>
     </div>
@@ -435,45 +517,52 @@ function AdminPanel({ isAdmin, onAdminLogin, onAdminLogout, onCreated }) {
   };
 
   return (
-    <div>
-      <h2>Admin Area</h2>
+    <div style={styles.fadeIn}>
+      <h2 style={styles.sectionTitle}>🔐 Admin Area</h2>
       {!isAdmin && (
         <>
-          <p style={{ fontSize: "0.9rem", color: "#666" }}>
+          <p style={styles.sectionSubtitle}>
             Only administrators can create new polls. Enter the admin code to continue.
           </p>
-          <form onSubmit={handleSubmit} style={styles.form}>
-            <label style={styles.label}>
-              Admin code:
-              <input
-                style={styles.input}
-                value={code}
-                onChange={(e) => setCode(e.target.value)}
-                placeholder="Enter admin code"
-              />
-            </label>
-            {error && <p style={{ color: "red" }}>{error}</p>}
-            <button type="submit" style={{ ...styles.button, marginTop: "12px" }}>
-              Login as Admin
-            </button>
-          </form>
+          <div style={styles.formCard}>
+            <form onSubmit={handleSubmit} style={styles.form}>
+              <label style={styles.label}>
+                Admin code:
+                <input
+                  style={styles.input}
+                  type="password"
+                  value={code}
+                  onChange={(e) => setCode(e.target.value)}
+                  placeholder="Enter admin code"
+                />
+              </label>
+              {error && (
+                <div style={styles.errorMessage}>
+                  <span>⚠️ {error}</span>
+                </div>
+              )}
+              <button type="submit" style={{ ...styles.button, marginTop: "16px", width: "100%" }}>
+                🔑 Login as Admin
+              </button>
+            </form>
+          </div>
         </>
       )}
 
       {isAdmin && (
         <>
-          <p style={{ fontSize: "0.9rem", color: "#666" }}>
-            You are logged in as admin. You can create new polls below.
-          </p>
+          <div style={styles.successMessage}>
+            <span>✅ You are logged in as admin. You can create new polls below.</span>
+          </div>
           <button
             type="button"
             onClick={onAdminLogout}
             style={{
-              ...styles.smallButton,
-              marginBottom: "12px",
+              ...styles.secondaryButton,
+              marginBottom: "24px",
             }}
           >
-            Log out as Admin
+            🚪 Log out as Admin
           </button>
           <CreatePollForm onCreated={onCreated} />
         </>
@@ -508,39 +597,166 @@ function AuthForm({ currentUser, onUserChange, onDone }) {
   };
 
   return (
-    <div>
-      <h2>Register / Login</h2>
-      <p style={{ fontSize: "0.9rem", color: "#666" }}>
+    <div style={styles.fadeIn}>
+      <h2 style={styles.sectionTitle}>👤 Register / Login</h2>
+      <p style={styles.sectionSubtitle}>
         Set a display name to vote on polls that do not allow anonymous voting.
       </p>
-      <form onSubmit={handleSubmit} style={styles.form}>
-        <label style={styles.label}>
-          Display name:
-          <input
-            style={styles.input}
-            value={name}
-            onChange={(e) => setName(e.target.value)}
-            placeholder="Enter your name"
-          />
-        </label>
-        {error && <p style={{ color: "red" }}>{error}</p>}
-        <button type="submit" style={{ ...styles.button, marginTop: "12px" }}>
-          Save
-        </button>
+      <div style={styles.formCard}>
         {currentUser && (
-          <button
-            type="button"
-            onClick={handleLogout}
-            style={{
-              ...styles.smallButton,
-              marginTop: "12px",
-              marginLeft: "0",
-            }}
-          >
-            Log out
-          </button>
+          <div style={styles.successMessage}>
+            <span>✅ Logged in as: <strong>{currentUser.name}</strong></span>
+          </div>
         )}
-      </form>
+        <form onSubmit={handleSubmit} style={styles.form}>
+          <label style={styles.label}>
+            Display name:
+            <input
+              style={styles.input}
+              value={name}
+              onChange={(e) => setName(e.target.value)}
+              placeholder="Enter your name"
+            />
+          </label>
+          {error && (
+            <div style={styles.errorMessage}>
+              <span>⚠️ {error}</span>
+            </div>
+          )}
+          <button type="submit" style={{ ...styles.button, marginTop: "16px", width: "100%" }}>
+            💾 Save
+          </button>
+          {currentUser && (
+            <button
+              type="button"
+              onClick={handleLogout}
+              style={{
+                ...styles.secondaryButton,
+                marginTop: "12px",
+                width: "100%",
+              }}
+            >
+              🚪 Log out
+            </button>
+          )}
+        </form>
+      </div>
+    </div>
+  );
+}
+
+// ====== Dashboard Component ======
+function Dashboard({ polls, onPollClick, isAdmin, onPublishToggle }) {
+  const publishedPolls = polls.filter((poll) => poll.published);
+  const COLORS = ["#6366f1", "#8b5cf6", "#ec4899", "#f59e0b", "#10b981", "#3b82f6", "#ef4444"];
+
+  if (publishedPolls.length === 0) {
+    return (
+      <div style={styles.fadeIn}>
+        <div style={styles.emptyState}>
+          <div style={styles.emptyIcon}>📈</div>
+          <h2 style={styles.emptyTitle}>No Published Polls</h2>
+          <p style={styles.emptyText}>
+            Publish a poll to see its results displayed here in beautiful pie charts!
+          </p>
+        </div>
+      </div>
+    );
+  }
+
+  return (
+    <div style={styles.fadeIn}>
+      <h2 style={styles.sectionTitle}>📊 Dashboard - Published Poll Results</h2>
+      <p style={styles.sectionSubtitle}>
+        View results of published polls in interactive pie chart format
+      </p>
+      <div style={styles.dashboardGrid}>
+        {publishedPolls.map((poll, index) => {
+          const totalVotes = poll.options.reduce((sum, opt) => sum + opt.votes, 0);
+          const chartData = poll.options.map((opt, idx) => ({
+            name: opt.text,
+            value: opt.votes,
+            percentage: totalVotes > 0 ? ((opt.votes / totalVotes) * 100).toFixed(1) : 0,
+          }));
+
+          return (
+            <div
+              key={poll._id}
+              style={{
+                ...styles.dashboardCard,
+                animationDelay: `${index * 0.15}s`,
+              }}
+              className="dashboard-card"
+            >
+              <h3 style={styles.dashboardCardTitle}>{poll.question}</h3>
+              {totalVotes === 0 ? (
+                <div style={styles.noVotesChart}>
+                  <p>No votes yet</p>
+                </div>
+              ) : (
+                <div style={styles.chartContainer}>
+                  <ResponsiveContainer width="100%" height={300}>
+                    <PieChart>
+                      <Pie
+                        data={chartData}
+                        cx="50%"
+                        cy="50%"
+                        labelLine={false}
+                        label={({ name, percentage }) => `${name}: ${percentage}%`}
+                        outerRadius={90}
+                        fill="#8884d8"
+                        dataKey="value"
+                        animationDuration={800}
+                      >
+                        {chartData.map((entry, idx) => (
+                          <Cell
+                            key={`cell-${idx}`}
+                            fill={COLORS[idx % COLORS.length]}
+                          />
+                        ))}
+                      </Pie>
+                      <Tooltip
+                        contentStyle={{
+                          backgroundColor: "rgba(255, 255, 255, 0.95)",
+                          border: "1px solid #e5e7eb",
+                          borderRadius: "8px",
+                          boxShadow: "0 4px 12px rgba(0,0,0,0.15)",
+                        }}
+                      />
+                      <Legend
+                        wrapperStyle={{ fontSize: "0.85rem" }}
+                        iconType="circle"
+                      />
+                    </PieChart>
+                  </ResponsiveContainer>
+                </div>
+              )}
+              <div style={styles.dashboardCardFooter}>
+                <div style={styles.totalVotes}>
+                  <span style={styles.totalVotesLabel}>Total Votes:</span>
+                  <strong style={styles.totalVotesValue}>{totalVotes}</strong>
+                </div>
+                <div style={styles.dashboardButtons}>
+                  <button
+                    onClick={() => onPollClick(poll)}
+                    style={styles.button}
+                  >
+                    👁️ View Details
+                  </button>
+                  {isAdmin && (
+                    <button
+                      onClick={() => onPublishToggle(poll._id, false)}
+                      style={styles.secondaryButton}
+                    >
+                      Unpublish
+                    </button>
+                  )}
+                </div>
+              </div>
+            </div>
+          );
+        })}
+      </div>
     </div>
   );
 }
@@ -554,6 +770,7 @@ function PollDetail({
   currentUser,
   onRequireAuth,
   isAdmin,
+  onPublishToggle,
 }) {
   const [submittingVote, setSubmittingVote] = useState(false);
   const [deleting, setDeleting] = useState(false);
@@ -713,155 +930,224 @@ function PollDetail({
   };
 
   return (
-    <div>
-      <button onClick={onBack} style={styles.button}>
-        ← Back to Polls
-      </button>
-      <button onClick={onRefresh} style={{ ...styles.button, marginLeft: "8px" }}>
-        Refresh Results
-      </button>
-      <button
-        onClick={handleClearVote}
-        disabled={submittingVote || selectedOptionIndex === null}
-        style={{
-          ...styles.button,
-          marginLeft: "8px",
-          backgroundColor: "#6c757d",
-          borderColor: "#6c757d",
-        }}
-      >
-        Clear Response
-      </button>
-      {isAdmin && onDelete && (
-        <button
-          onClick={handleDelete}
-          disabled={deleting}
-          style={{
-            ...styles.button,
-            marginLeft: "8px",
-            backgroundColor: "#dc3545",
-            borderColor: "#dc3545",
-          }}
-        >
-          {deleting ? "Deleting..." : "Delete Poll"}
+    <div style={styles.fadeIn}>
+      <div style={styles.buttonGroup}>
+        <button onClick={onBack} style={styles.button}>
+          ← Back to Polls
         </button>
-      )}
-
-      <h2 style={{ marginTop: "16px" }}>{poll.question}</h2>
-      <p style={{ fontSize: "0.9rem", color: "#666" }}>
-        {poll.allowAnonymous
-          ? "Anonymous voting is allowed. Your identity is not stored."
-          : "Anonymous voting is disabled (but this simple demo still does not store identities)."}
-      </p>
-
-      <div style={{ marginTop: "16px" }}>
-        {poll.options.map((opt, index) => {
-          const percentage = totalVotes
-            ? ((opt.votes / totalVotes) * 100).toFixed(1)
-            : 0;
-          return (
-            <div key={index} style={{ marginBottom: "12px" }}>
-              <div style={{ display: "flex", justifyContent: "space-between" }}>
-                <span>{opt.text}</span>
-                <span>
-                  {opt.votes} vote(s) — {percentage}%
-                </span>
-              </div>
-              <div style={styles.progressBarOuter}>
-                <div
-                  style={{
-                    ...styles.progressBarInner,
-                    width: `${percentage}%`,
-                  }}
-                ></div>
-              </div>
-              <button
-                style={styles.button}
-                disabled={submittingVote}
-                onClick={() => handleVote(index)}
-              >
-                {submittingVote ? "Submitting..." : "Vote"}
-              </button>
-            </div>
-          );
-        })}
+        <button onClick={onRefresh} style={styles.button}>
+          🔄 Refresh
+        </button>
+        <button
+          onClick={handleClearVote}
+          disabled={submittingVote || selectedOptionIndex === null}
+          style={styles.secondaryButton}
+        >
+          Clear Response
+        </button>
+        {isAdmin && onDelete && (
+          <button
+            onClick={handleDelete}
+            disabled={deleting}
+            style={styles.dangerButton}
+          >
+            {deleting ? "Deleting..." : "🗑️ Delete"}
+          </button>
+        )}
+        {isAdmin && onPublishToggle && (
+          <button
+            onClick={() => onPublishToggle(!poll.published)}
+            style={poll.published ? styles.secondaryButton : styles.successButton}
+          >
+            {poll.published ? "👁️ Unpublish" : "✨ Publish Results"}
+          </button>
+        )}
       </div>
 
-      {totalVotes === 0 && (
-        <p style={{ fontSize: "0.9rem", color: "#999" }}>
-          No votes yet. Be the first to vote!
-        </p>
-      )}
+      <div style={styles.pollDetailCard}>
+        <h2 style={styles.pollDetailTitle}>{poll.question}</h2>
+        <div style={styles.infoBadge}>
+          {poll.allowAnonymous ? (
+            <span>🔓 Anonymous voting enabled</span>
+          ) : (
+            <span>🔒 Non-anonymous voting</span>
+          )}
+        </div>
 
-      {error && <p style={{ color: "red" }}>{error}</p>}
+        <div style={styles.optionsContainer}>
+          {poll.options.map((opt, index) => {
+            const percentage = totalVotes
+              ? ((opt.votes / totalVotes) * 100).toFixed(1)
+              : 0;
+            const isSelected = selectedOptionIndex === index;
+            return (
+              <div key={index} style={styles.optionCard}>
+                <div style={styles.optionHeader}>
+                  <span style={styles.optionText}>{opt.text}</span>
+                  <div style={styles.voteCount}>
+                    <strong>{opt.votes}</strong> vote{opt.votes !== 1 ? "s" : ""} — {percentage}%
+                  </div>
+                </div>
+                <div style={styles.progressBarOuter}>
+                  <div
+                    style={{
+                      ...styles.progressBarInner,
+                      width: `${percentage}%`,
+                      transition: "width 0.6s ease-out",
+                    }}
+                  ></div>
+                </div>
+                <button
+                  style={{
+                    ...styles.voteButton,
+                    ...(isSelected ? styles.votedButton : {}),
+                  }}
+                  disabled={submittingVote}
+                  onClick={() => handleVote(index)}
+                >
+                  {submittingVote ? "⏳ Submitting..." : isSelected ? "✓ Voted" : "🗳️ Vote"}
+                </button>
+              </div>
+            );
+          })}
+        </div>
 
-      <p style={{ fontSize: "0.8rem", color: "#999", marginTop: "16px" }}>
-        Last updated: {new Date(poll.updatedAt || poll.createdAt).toLocaleString()}
-      </p>
+        {totalVotes === 0 && (
+          <div style={styles.emptyVotes}>
+            <p>🌟 No votes yet. Be the first to vote!</p>
+          </div>
+        )}
+
+        {error && (
+          <div style={styles.errorMessage}>
+            <span>⚠️ {error}</span>
+          </div>
+        )}
+
+        <div style={styles.footerInfo}>
+          <span>Last updated: {new Date(poll.updatedAt || poll.createdAt).toLocaleString()}</span>
+        </div>
+      </div>
     </div>
   );
 }
 
-// ====== Basic inline styles to keep things simple ======
+// ====== Enhanced Modern Styles ======
 const styles = {
   appContainer: {
-    maxWidth: "900px",
+    maxWidth: "1200px",
     margin: "0 auto",
-    padding: "24px 16px",
-    fontFamily: "Arial, sans-serif",
+    padding: "32px 20px",
+    fontFamily: "'Inter', -apple-system, BlinkMacSystemFont, 'Segoe UI', 'Roboto', sans-serif",
     minHeight: "100vh",
     display: "flex",
     flexDirection: "column",
   },
   header: {
     textAlign: "center",
-    marginBottom: "20px",
+    marginBottom: "32px",
     color: "#ffffff",
-    textShadow: "0 1px 3px rgba(0,0,0,0.7)",
+    textShadow: "0 2px 8px rgba(0,0,0,0.5), 0 0 20px rgba(99, 102, 241, 0.3)",
   },
   title: {
     margin: 0,
-    fontSize: "2.4rem",
-    letterSpacing: "0.03em",
+    fontSize: "3rem",
+    fontWeight: 800,
+    letterSpacing: "-0.02em",
+    background: "linear-gradient(135deg, #ffffff 0%, #e0e7ff 100%)",
+    WebkitBackgroundClip: "text",
+    WebkitTextFillColor: "transparent",
+    backgroundClip: "text",
   },
   subtitle: {
-    margin: "8px 0 0 0",
-    fontSize: "1rem",
+    margin: "12px 0 0 0",
+    fontSize: "1.1rem",
     opacity: 0.95,
+    fontWeight: 400,
   },
   nav: {
     display: "flex",
     justifyContent: "center",
-    gap: "8px",
-    marginBottom: "16px",
+    gap: "12px",
+    marginBottom: "32px",
+    flexWrap: "wrap",
   },
   main: {
-    backgroundColor: "rgba(255, 255, 255, 0.92)", // semi-transparent white card
-    padding: "24px 20px",
-    borderRadius: "12px",
-    boxShadow: "0 16px 40px rgba(0,0,0,0.35)",
-    backdropFilter: "blur(4px)",
+    backgroundColor: "rgba(255, 255, 255, 0.95)",
+    padding: "40px 32px",
+    borderRadius: "24px",
+    boxShadow: "0 20px 60px rgba(0,0,0,0.3), 0 0 0 1px rgba(255,255,255,0.1)",
+    backdropFilter: "blur(20px) saturate(180%)",
+    border: "1px solid rgba(255, 255, 255, 0.3)",
+    transition: "transform 0.3s ease, box-shadow 0.3s ease",
   },
   button: {
-    padding: "8px 14px",
-    borderRadius: "999px",
-    border: "1px solid #2563eb",
-    backgroundColor: "#2563eb",
-    color: "#f9fafb",
+    padding: "12px 24px",
+    borderRadius: "12px",
+    border: "none",
+    background: "linear-gradient(135deg, #6366f1 0%, #8b5cf6 100%)",
+    color: "#ffffff",
     cursor: "pointer",
-    fontSize: "0.9rem",
-    fontWeight: 500,
-    transition: "background-color 0.15s ease, border-color 0.15s ease, transform 0.1s ease",
+    fontSize: "0.95rem",
+    fontWeight: 600,
+    transition: "all 0.3s cubic-bezier(0.4, 0, 0.2, 1)",
+    boxShadow: "0 4px 12px rgba(99, 102, 241, 0.4)",
+    position: "relative",
+    overflow: "hidden",
   },
   activeButton: {
-    padding: "8px 14px",
-    borderRadius: "999px",
-    border: "1px solid #1d4ed8",
-    backgroundColor: "#1d4ed8",
-    color: "#f9fafb",
+    padding: "12px 24px",
+    borderRadius: "12px",
+    border: "none",
+    background: "linear-gradient(135deg, #4f46e5 0%, #7c3aed 100%)",
+    color: "#ffffff",
     cursor: "pointer",
-    fontSize: "0.9rem",
+    fontSize: "0.95rem",
+    fontWeight: 700,
+    boxShadow: "0 6px 20px rgba(99, 102, 241, 0.5), inset 0 1px 0 rgba(255,255,255,0.2)",
+    transform: "translateY(-2px)",
+  },
+  secondaryButton: {
+    padding: "12px 24px",
+    borderRadius: "12px",
+    border: "none",
+    background: "linear-gradient(135deg, #6b7280 0%, #4b5563 100%)",
+    color: "#ffffff",
+    cursor: "pointer",
+    fontSize: "0.95rem",
     fontWeight: 600,
+    transition: "all 0.3s cubic-bezier(0.4, 0, 0.2, 1)",
+    boxShadow: "0 4px 12px rgba(107, 114, 128, 0.4)",
+  },
+  successButton: {
+    padding: "12px 24px",
+    borderRadius: "12px",
+    border: "none",
+    background: "linear-gradient(135deg, #10b981 0%, #059669 100%)",
+    color: "#ffffff",
+    cursor: "pointer",
+    fontSize: "0.95rem",
+    fontWeight: 600,
+    transition: "all 0.3s cubic-bezier(0.4, 0, 0.2, 1)",
+    boxShadow: "0 4px 12px rgba(16, 185, 129, 0.4)",
+  },
+  dangerButton: {
+    padding: "12px 24px",
+    borderRadius: "12px",
+    border: "none",
+    background: "linear-gradient(135deg, #ef4444 0%, #dc2626 100%)",
+    color: "#ffffff",
+    cursor: "pointer",
+    fontSize: "0.95rem",
+    fontWeight: 600,
+    transition: "all 0.3s cubic-bezier(0.4, 0, 0.2, 1)",
+    boxShadow: "0 4px 12px rgba(239, 68, 68, 0.4)",
+  },
+  buttonGroup: {
+    display: "flex",
+    gap: "12px",
+    flexWrap: "wrap",
+    marginBottom: "24px",
   },
   list: {
     listStyle: "none",
@@ -869,60 +1155,356 @@ const styles = {
     margin: 0,
   },
   listItem: {
-    padding: "10px 12px",
-    marginBottom: "10px",
-    backgroundColor: "rgba(255,255,255,0.95)",
-    borderRadius: "10px",
-    border: "1px solid #e5e7eb",
+    padding: "20px 24px",
+    marginBottom: "16px",
+    background: "linear-gradient(135deg, rgba(255,255,255,0.9) 0%, rgba(255,255,255,0.7) 100%)",
+    borderRadius: "16px",
+    border: "1px solid rgba(255,255,255,0.5)",
     display: "flex",
     justifyContent: "space-between",
     cursor: "pointer",
     alignItems: "center",
+    transition: "all 0.3s cubic-bezier(0.4, 0, 0.2, 1)",
+    boxShadow: "0 4px 12px rgba(0,0,0,0.08)",
+    animation: "slideInUp 0.5s ease-out both",
+  },
+  listItemContent: {
+    flex: 1,
+  },
+  pollQuestion: {
+    fontSize: "1.1rem",
+    fontWeight: 600,
+    color: "#1f2937",
+    display: "block",
+    marginBottom: "8px",
+  },
+  pollMeta: {
+    display: "flex",
+    gap: "8px",
+    flexWrap: "wrap",
+  },
+  badge: {
+    fontSize: "0.8rem",
+    padding: "4px 12px",
+    borderRadius: "20px",
+    background: "rgba(99, 102, 241, 0.1)",
+    color: "#6366f1",
+    fontWeight: 500,
+  },
+  publishedBadge: {
+    fontSize: "0.8rem",
+    padding: "4px 12px",
+    borderRadius: "20px",
+    background: "rgba(16, 185, 129, 0.1)",
+    color: "#10b981",
+    fontWeight: 500,
+  },
+  listItemRight: {
+    display: "flex",
+    alignItems: "center",
+    gap: "12px",
+  },
+  dateText: {
+    fontSize: "0.85rem",
+    color: "#6b7280",
+    fontWeight: 500,
+  },
+  arrow: {
+    fontSize: "1.2rem",
+    color: "#6366f1",
+    fontWeight: 600,
+    transition: "transform 0.3s ease",
   },
   form: {
     display: "flex",
     flexDirection: "column",
+    gap: "16px",
   },
   label: {
-    fontWeight: "bold",
+    fontWeight: 600,
     marginTop: "8px",
-    fontSize: "0.9rem",
+    fontSize: "0.95rem",
+    color: "#374151",
   },
   input: {
     width: "100%",
-    padding: "6px 8px",
-    marginTop: "4px",
-    borderRadius: "6px",
-    border: "1px solid #d1d5db",
-    fontSize: "0.9rem",
+    padding: "12px 16px",
+    marginTop: "6px",
+    borderRadius: "12px",
+    border: "2px solid #e5e7eb",
+    fontSize: "0.95rem",
     outline: "none",
     boxSizing: "border-box",
+    transition: "all 0.3s ease",
+    background: "rgba(255,255,255,0.9)",
   },
   optionRow: {
     display: "flex",
-    gap: "4px",
-    marginBottom: "4px",
+    gap: "8px",
+    marginBottom: "8px",
+    alignItems: "center",
   },
   smallButton: {
-    padding: "4px 8px",
-    borderRadius: "999px",
-    border: "1px solid #dc2626",
-    backgroundColor: "#dc2626",
+    padding: "6px 14px",
+    borderRadius: "8px",
+    border: "none",
+    background: "linear-gradient(135deg, #ef4444 0%, #dc2626 100%)",
     color: "#fff",
     cursor: "pointer",
-    fontSize: "0.8rem",
+    fontSize: "0.85rem",
+    fontWeight: 600,
+    transition: "all 0.3s ease",
+    boxShadow: "0 2px 8px rgba(239, 68, 68, 0.3)",
   },
   progressBarOuter: {
     width: "100%",
-    height: "12px",
-    backgroundColor: "#e0e0e0",
-    borderRadius: "6px",
+    height: "16px",
+    background: "linear-gradient(135deg, #f3f4f6 0%, #e5e7eb 100%)",
+    borderRadius: "10px",
     overflow: "hidden",
-    margin: "4px 0 8px 0",
+    margin: "12px 0",
+    boxShadow: "inset 0 2px 4px rgba(0,0,0,0.1)",
   },
   progressBarInner: {
     height: "100%",
-    backgroundColor: "#28a745",
+    background: "linear-gradient(90deg, #6366f1 0%, #8b5cf6 50%, #ec4899 100%)",
+    borderRadius: "10px",
+    boxShadow: "0 2px 8px rgba(99, 102, 241, 0.4)",
+    transition: "width 0.6s cubic-bezier(0.4, 0, 0.2, 1)",
+  },
+  dashboardGrid: {
+    display: "grid",
+    gridTemplateColumns: "repeat(auto-fill, minmax(380px, 1fr))",
+    gap: "28px",
+    marginTop: "28px",
+  },
+  dashboardCard: {
+    background: "linear-gradient(135deg, rgba(255,255,255,0.95) 0%, rgba(255,255,255,0.85) 100%)",
+    padding: "28px",
+    borderRadius: "20px",
+    boxShadow: "0 8px 24px rgba(0,0,0,0.12), 0 0 0 1px rgba(255,255,255,0.5)",
+    border: "1px solid rgba(255,255,255,0.5)",
+    transition: "all 0.4s cubic-bezier(0.4, 0, 0.2, 1)",
+    animation: "slideInUp 0.6s ease-out both",
+  },
+  dashboardCardTitle: {
+    marginTop: 0,
+    marginBottom: "20px",
+    fontSize: "1.2rem",
+    fontWeight: 700,
+    color: "#1f2937",
+    lineHeight: 1.4,
+  },
+  chartContainer: {
+    margin: "20px 0",
+    padding: "10px",
+  },
+  noVotesChart: {
+    color: "#9ca3af",
+    textAlign: "center",
+    padding: "60px 0",
+    fontSize: "1rem",
+    fontWeight: 500,
+  },
+  dashboardCardFooter: {
+    marginTop: "20px",
+    paddingTop: "20px",
+    borderTop: "1px solid rgba(229, 231, 235, 0.5)",
+  },
+  totalVotes: {
+    display: "flex",
+    justifyContent: "space-between",
+    alignItems: "center",
+    marginBottom: "16px",
+  },
+  totalVotesLabel: {
+    fontSize: "0.9rem",
+    color: "#6b7280",
+    fontWeight: 500,
+  },
+  totalVotesValue: {
+    fontSize: "1.3rem",
+    color: "#6366f1",
+    fontWeight: 700,
+  },
+  dashboardButtons: {
+    display: "flex",
+    gap: "10px",
+    justifyContent: "center",
+  },
+  fadeIn: {
+    animation: "fadeIn 0.5s ease-out",
+  },
+  sectionTitle: {
+    fontSize: "2rem",
+    fontWeight: 800,
+    color: "#1f2937",
+    marginBottom: "8px",
+    letterSpacing: "-0.02em",
+  },
+  sectionSubtitle: {
+    fontSize: "1rem",
+    color: "#6b7280",
+    marginBottom: "28px",
+    fontWeight: 400,
+  },
+  emptyState: {
+    textAlign: "center",
+    padding: "60px 20px",
+  },
+  emptyIcon: {
+    fontSize: "4rem",
+    marginBottom: "16px",
+    display: "block",
+  },
+  emptyTitle: {
+    fontSize: "1.5rem",
+    fontWeight: 700,
+    color: "#1f2937",
+    marginBottom: "8px",
+  },
+  emptyText: {
+    fontSize: "1rem",
+    color: "#6b7280",
+    maxWidth: "400px",
+    margin: "0 auto",
+  },
+  pollDetailCard: {
+    background: "linear-gradient(135deg, rgba(255,255,255,0.95) 0%, rgba(249,250,251,0.95) 100%)",
+    padding: "32px",
+    borderRadius: "20px",
+    boxShadow: "0 8px 24px rgba(0,0,0,0.1)",
+    border: "1px solid rgba(255,255,255,0.5)",
+  },
+  pollDetailTitle: {
+    fontSize: "1.8rem",
+    fontWeight: 800,
+    color: "#1f2937",
+    marginBottom: "16px",
+    lineHeight: 1.3,
+  },
+  infoBadge: {
+    display: "inline-block",
+    padding: "8px 16px",
+    borderRadius: "20px",
+    background: "rgba(99, 102, 241, 0.1)",
+    color: "#6366f1",
+    fontSize: "0.9rem",
+    fontWeight: 600,
+    marginBottom: "24px",
+  },
+  optionsContainer: {
+    display: "flex",
+    flexDirection: "column",
+    gap: "20px",
+    marginTop: "24px",
+  },
+  optionCard: {
+    padding: "20px",
+    borderRadius: "16px",
+    background: "rgba(255,255,255,0.8)",
+    border: "2px solid rgba(229, 231, 235, 0.5)",
+    transition: "all 0.3s ease",
+    boxShadow: "0 2px 8px rgba(0,0,0,0.05)",
+  },
+  optionHeader: {
+    display: "flex",
+    justifyContent: "space-between",
+    alignItems: "center",
+    marginBottom: "12px",
+    flexWrap: "wrap",
+    gap: "8px",
+  },
+  optionText: {
+    fontSize: "1.05rem",
+    fontWeight: 600,
+    color: "#1f2937",
+    flex: 1,
+  },
+  voteCount: {
+    fontSize: "0.9rem",
+    color: "#6366f1",
+    fontWeight: 600,
+  },
+  voteButton: {
+    padding: "10px 20px",
+    borderRadius: "10px",
+    border: "none",
+    background: "linear-gradient(135deg, #6366f1 0%, #8b5cf6 100%)",
+    color: "#ffffff",
+    cursor: "pointer",
+    fontSize: "0.9rem",
+    fontWeight: 600,
+    transition: "all 0.3s ease",
+    boxShadow: "0 4px 12px rgba(99, 102, 241, 0.3)",
+    width: "100%",
+    marginTop: "8px",
+  },
+  votedButton: {
+    background: "linear-gradient(135deg, #10b981 0%, #059669 100%)",
+    boxShadow: "0 4px 12px rgba(16, 185, 129, 0.3)",
+  },
+  emptyVotes: {
+    textAlign: "center",
+    padding: "32px",
+    color: "#9ca3af",
+    fontSize: "1rem",
+    fontWeight: 500,
+  },
+  errorMessage: {
+    padding: "16px",
+    borderRadius: "12px",
+    background: "rgba(239, 68, 68, 0.1)",
+    border: "1px solid rgba(239, 68, 68, 0.3)",
+    color: "#dc2626",
+    marginTop: "16px",
+    fontWeight: 500,
+  },
+  footerInfo: {
+    marginTop: "24px",
+    paddingTop: "20px",
+    borderTop: "1px solid rgba(229, 231, 235, 0.5)",
+    fontSize: "0.85rem",
+    color: "#9ca3af",
+    textAlign: "center",
+  },
+  loadingContainer: {
+    display: "flex",
+    flexDirection: "column",
+    alignItems: "center",
+    justifyContent: "center",
+    padding: "60px 20px",
+    gap: "20px",
+  },
+  spinner: {
+    width: "50px",
+    height: "50px",
+    border: "4px solid rgba(99, 102, 241, 0.2)",
+    borderTop: "4px solid #6366f1",
+    borderRadius: "50%",
+    animation: "spin 1s linear infinite",
+  },
+  loadingText: {
+    fontSize: "1rem",
+    color: "#6366f1",
+    fontWeight: 600,
+  },
+  formCard: {
+    background: "linear-gradient(135deg, rgba(255,255,255,0.9) 0%, rgba(249,250,251,0.9) 100%)",
+    padding: "28px",
+    borderRadius: "16px",
+    boxShadow: "0 4px 12px rgba(0,0,0,0.08)",
+    border: "1px solid rgba(255,255,255,0.5)",
+    marginTop: "20px",
+  },
+  successMessage: {
+    padding: "16px",
+    borderRadius: "12px",
+    background: "rgba(16, 185, 129, 0.1)",
+    border: "1px solid rgba(16, 185, 129, 0.3)",
+    color: "#059669",
+    marginBottom: "20px",
+    fontWeight: 500,
   },
 };
 
