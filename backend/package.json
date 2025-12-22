@@ -4,13 +4,13 @@
   "main": "server.js",
   "type": "module",
   "scripts": {
-    "start": "node server.js"
+    "start": "node server.js",
+    "dev":"nodemon server.js"
   },
   "dependencies": {
     "cors": "^2.8.5",
     "express": "^4.19.0",
-    "mongoose": "^8.0.0"
+    "mongoose": "^8.0.0",
+    "nodemon": "^3.1.11"
   }
 }
-
-
