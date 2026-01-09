@@ -29,7 +29,12 @@ function App() {
       if (showLoading) setLoading(true);
       const res = await fetch(`${API_URL}/polls`);
       const data = await res.json();
-      setPolls(data);
+      if (Array.isArray(data)) {
+        setPolls(data);
+      } else {
+        console.error("API returned non-array:", data);
+        setPolls([]);
+      }
     } catch (err) {
       console.error("Error fetching polls", err);
     } finally {
@@ -332,7 +337,7 @@ function PollDetail({ poll, onBack, onRefresh }) {
       </p>
 
       <div style={{ marginTop: "16px" }}>
-        {poll.options.map((opt, index) => {
+        {poll.options && Array.isArray(poll.options) && poll.options.map((opt, index) => {
           const percentage = totalVotes
             ? ((opt.votes / totalVotes) * 100).toFixed(1)
             : 0;
