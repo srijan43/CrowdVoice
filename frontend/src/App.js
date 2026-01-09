@@ -1,6 +1,6 @@
 import React, { useEffect, useState } from "react";
 
-const API_URL = "https://crowdvoice-fg8d.onrender.com/api";
+const API_URL = "https://crowdvoice-fg8d.onrender.com";
 
 function App() {
   const [view, setView] = useState("list"); // "list" | "create" | "detail"
