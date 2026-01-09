@@ -3,6 +3,7 @@ import { PieChart, Pie, Cell, ResponsiveContainer, Legend, Tooltip } from "recha
 
 // Use environment variable or fallback to localhost
 const API_URL = process.env.REACT_APP_API_URL || "https://crowdvoice-fg8d.onrender.com/api";
+
 function App() {
   const [view, setView] = useState("list"); // "list" | "detail" | "auth" | "admin" | "dashboard"
   const [polls, setPolls] = useState([]);
@@ -68,7 +69,7 @@ function App() {
       // Use refs to get current values without triggering re-renders
       const currentView = viewRef.current;
       const currentSelectedPoll = selectedPollRef.current;
-      
+
       if (currentView === "detail" && currentSelectedPoll) {
         // Refresh just the selected poll
         fetchPollById(currentSelectedPoll._id, false);
@@ -85,7 +86,12 @@ function App() {
       if (showLoading) setLoading(true);
       const res = await fetch(`${API_URL}/polls`);
       const data = await res.json();
-      setPolls(data);
+      if (Array.isArray(data)) {
+        setPolls(data);
+      } else {
+        console.error("API returned non-array:", data);
+        setPolls([]);
+      }
     } catch (err) {
       console.error("Error fetching polls", err);
     } finally {
@@ -974,7 +980,7 @@ function PollDetail({
         </div>
 
         <div style={styles.optionsContainer}>
-          {poll.options.map((opt, index) => {
+          {poll.options && Array.isArray(poll.options) && poll.options.map((opt, index) => {
             const percentage = totalVotes
               ? ((opt.votes / totalVotes) * 100).toFixed(1)
               : 0;
