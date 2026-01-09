@@ -15,6 +15,11 @@ app.use(express.json()); // Parse JSON bodies
 
 // ====== MONGODB CONNECTION ======
 const MONGO_URI = process.env.MONGODB_URI || "mongodb://127.0.0.1:27017/polling_app";
+console.log("Starting server...");
+console.log("MONGO_URI defined:", !!process.env.MONGODB_URI);
+if (!process.env.MONGODB_URI) {
+  console.warn("⚠️  WARNING: MONGODB_URI is not set. Using localhost fallback which will FAIL on Render!");
+}
 
 mongoose
   .connect(MONGO_URI)
@@ -47,7 +52,13 @@ const Poll = mongoose.model("Poll", pollSchema);
 
 // Simple root route
 app.get("/", (req, res) => {
-  res.send("Online Polling and Voting System Backend");
+  const readyState = mongoose.connection.readyState;
+  const states = { 0: "disconnected", 1: "connected", 2: "connecting", 3: "disconnecting" };
+  res.json({
+    message: "Online Polling and Voting System Backend",
+    mongoStatus: states[readyState] || "unknown",
+    mongoUriSet: !!process.env.MONGODB_URI
+  });
 });
 
 // Create a new poll
@@ -194,14 +205,14 @@ app.patch("/api/polls/:id/publish", async (req, res) => {
   try {
     const { published } = req.body;
     const poll = await Poll.findById(req.params.id);
-    
+
     if (!poll) {
       return res.status(404).json({ message: "Poll not found" });
     }
-    
+
     poll.published = published !== undefined ? published : !poll.published;
     const updatedPoll = await poll.save();
-    
+
     res.json(updatedPoll);
   } catch (err) {
     console.error(err);
