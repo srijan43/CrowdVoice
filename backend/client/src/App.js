@@ -2,8 +2,7 @@ import React, { useEffect, useState, useRef } from "react";
 import { PieChart, Pie, Cell, ResponsiveContainer, Legend, Tooltip } from "recharts";
 
 // Use environment variable or fallback to localhost
-const API_URL = process.env.REACT_APP_API_URL || "http://localhost:5000/api";
-
+const API_URL = process.env.REACT_APP_API_URL || "https://crowdvoice-fg8d.onrender.com/api";
 function App() {
   const [view, setView] = useState("list"); // "list" | "detail" | "auth" | "admin" | "dashboard"
   const [polls, setPolls] = useState([]);
