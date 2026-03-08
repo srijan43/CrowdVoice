@@ -1,3 +1,4 @@
+import "dotenv/config";
 import express from "express";
 import mongoose from "mongoose";
 import cors from "cors";
@@ -41,9 +42,8 @@ const pollSchema = new mongoose.Schema(
     options: [optionSchema],
     allowAnonymous: { type: Boolean, default: true },
     published: { type: Boolean, default: false },
-    createdAt: { type: Date, default: Date.now },
   },
-  { collection: "polls" }
+  { collection: "polls", timestamps: true }
 );
 
 const Poll = mongoose.model("Poll", pollSchema);
@@ -72,16 +72,21 @@ app.post("/api/polls", async (req, res) => {
   try {
     const { question, options, allowAnonymous } = req.body;
 
-    if (!question || !options || !Array.isArray(options) || options.length < 2) {
+    const trimmedQuestion = typeof question === "string" ? question.trim() : "";
+    const trimmedOptions = Array.isArray(options)
+      ? options.map((opt) => (typeof opt === "string" ? opt.trim() : "")).filter(Boolean)
+      : [];
+
+    if (!trimmedQuestion || trimmedOptions.length < 2) {
       return res
         .status(400)
-        .json({ message: "Question and at least two options are required." });
+        .json({ message: "Question and at least two non-empty options are required." });
     }
 
-    const formattedOptions = options.map((opt) => ({ text: opt }));
+    const formattedOptions = trimmedOptions.map((opt) => ({ text: opt }));
 
     const poll = new Poll({
-      question,
+      question: trimmedQuestion,
       options: formattedOptions,
       allowAnonymous: allowAnonymous ?? true,
     });
@@ -220,8 +225,18 @@ app.patch("/api/polls/:id/publish", async (req, res) => {
   }
 });
 
+// ====== GLOBAL ERROR HANDLER ======
+// Must be defined after all routes — catches any error passed via next(err)
+app.use((err, req, res, next) => {
+  console.error("Unhandled error:", err);
+  res.status(err.status || 500).json({ message: err.message || "Internal server error" });
+});
+
+// ====== 404 HANDLER ======
+app.use((req, res) => {
+  res.status(404).json({ message: `Route ${req.method} ${req.path} not found` });
+});
+
 app.listen(PORT, () => {
   console.log(`Server running on http://localhost:${PORT}`);
 });
-
-

@@ -1,4 +1,4 @@
-import React, { useEffect, useState, useRef } from "react";
+import React, { useEffect, useState, useRef, useCallback } from "react";
 import { PieChart, Pie, Cell, ResponsiveContainer, Legend, Tooltip } from "recharts";
 
 // Use environment variable or fallback to localhost
@@ -61,6 +61,37 @@ function App() {
     };
   }, []);
 
+  const fetchPolls = useCallback(async (showLoading = true) => {
+    try {
+      if (showLoading) setLoading(true);
+      const res = await fetch(`${API_URL}/polls`);
+      const data = await res.json();
+      if (Array.isArray(data)) {
+        setPolls(data);
+      } else {
+        console.error("API returned non-array:", data);
+        setPolls([]);
+      }
+    } catch (err) {
+      console.error("Error fetching polls", err);
+    } finally {
+      if (showLoading) setLoading(false);
+    }
+  }, []);
+
+  const fetchPollById = useCallback(async (id, showLoading = true) => {
+    try {
+      if (showLoading) setLoading(true);
+      const res = await fetch(`${API_URL}/polls/${id}`);
+      const data = await res.json();
+      setSelectedPoll(data);
+    } catch (err) {
+      console.error("Error fetching poll", err);
+    } finally {
+      if (showLoading) setLoading(false);
+    }
+  }, []);
+
   // For "real-time" updates (basic approach: refetch every 3 seconds)
   useEffect(() => {
     fetchPolls();
@@ -79,38 +110,7 @@ function App() {
     }, 3000);
 
     return () => clearInterval(intervalId);
-  }, [view]); // Only depend on view, not selectedPoll
-
-  const fetchPolls = async (showLoading = true) => {
-    try {
-      if (showLoading) setLoading(true);
-      const res = await fetch(`${API_URL}/polls`);
-      const data = await res.json();
-      if (Array.isArray(data)) {
-        setPolls(data);
-      } else {
-        console.error("API returned non-array:", data);
-        setPolls([]);
-      }
-    } catch (err) {
-      console.error("Error fetching polls", err);
-    } finally {
-      if (showLoading) setLoading(false);
-    }
-  };
-
-  const fetchPollById = async (id, showLoading = true) => {
-    try {
-      if (showLoading) setLoading(true);
-      const res = await fetch(`${API_URL}/polls/${id}`);
-      const data = await res.json();
-      setSelectedPoll(data);
-    } catch (err) {
-      console.error("Error fetching poll", err);
-    } finally {
-      if (showLoading) setLoading(false);
-    }
-  };
+  }, [fetchPolls, fetchPollById]); // Stable references from useCallback
 
   const handlePollClick = (poll) => {
     setSelectedPoll(poll);
@@ -829,10 +829,7 @@ function PollDetail({
         throw new Error(data.message || "Failed to vote");
       }
 
-      const updatedPoll = await res.json();
-      // Refresh by directly using the response
-      // (or you could call onRefresh again)
-      Object.assign(poll, updatedPoll);
+      // Refresh from server so state is correctly updated
       setSelectedOptionIndex(optionIndex);
       try {
         const userKeyPart = currentUser?.name ? `_${currentUser.name}` : "";
@@ -840,6 +837,7 @@ function PollDetail({
       } catch {
         // ignore storage error
       }
+      if (onRefresh) onRefresh();
     } catch (err) {
       console.error(err);
       setError(err.message);
@@ -894,7 +892,8 @@ function PollDetail({
       }
 
       const updatedPoll = await res.json();
-      Object.assign(poll, updatedPoll);
+      // don't mutate poll prop — let React re-render via onRefresh
+      void updatedPoll;
       setSelectedOptionIndex(null);
       try {
         const userKeyPart = currentUser?.name ? `_${currentUser.name}` : "";
@@ -902,7 +901,7 @@ function PollDetail({
       } catch {
         // ignore
       }
-      // Make sure UI is fully in sync with backend
+      // Sync UI fully with server
       if (onRefresh) {
         onRefresh();
       }
