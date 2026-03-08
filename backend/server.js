@@ -8,7 +8,7 @@ const PORT = process.env.PORT || 5000;
 
 // ====== MIDDLEWARE ======
 app.use(cors({
-  origin: "*", // Allow all origins (change in production)
+  origin: ["https://crowdvoice-frontend.onrender.com", "http://localhost:3000", "http://localhost:3001"], // Allow explicit origins
   methods: ["GET", "POST", "DELETE", "PUT", "PATCH"],
   allowedHeaders: ["Content-Type", "Authorization"]
 }));
